@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STUN Server Diagnostics</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
+
+  :root {
+    --bg: #080c10;
+    --surface: #0d1318;
+    --border: #1a2a35;
+    --accent: #00e5ff;
+    --accent2: #00ff88;
+    --warn: #ff6b35;
+    --muted: #3a5060;
+    --text: #c8dde8;
+    --text-dim: #607a88;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    padding: 40px 24px;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(0,229,255,0.04) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 100%, rgba(0,255,136,0.03) 0%, transparent 50%);
+  }
+
+  header {
+    max-width: 760px;
+    margin: 0 auto 40px;
+  }
+
+  .label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    opacity: 0.7;
+  }
+
+  h1 {
+    font-size: clamp(28px, 5vw, 48px);
+    font-weight: 700;
+    letter-spacing: 1px;
+    line-height: 1;
+    color: #fff;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    margin-top: 10px;
+    font-size: 15px;
+    font-weight: 300;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+  }
+
+  .controls {
+    max-width: 760px;
+    margin: 0 auto 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  button {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    padding: 12px 28px;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #000;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  }
+  .btn-primary:hover { background: #fff; transform: translateY(-1px); }
+  .btn-primary:disabled { background: var(--muted); color: var(--bg); cursor: not-allowed; transform: none; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .status-bar {
+    max-width: 760px;
+    margin: 0 auto 24px;
+    display: flex;
+    gap: 24px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+  }
+
+  .stat { display: flex; align-items: center; gap: 8px; }
+  .stat-val { color: var(--text); font-size: 16px; font-family: 'Rajdhani', sans-serif; font-weight: 700; }
+  .stat-val.green { color: var(--accent2); }
+  .stat-val.red { color: var(--warn); }
+
+  .grid {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+
+  .card.testing::before { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .card.success::before { background: var(--accent2); }
+  .card.fail::before { background: var(--warn); }
+  .card.success { border-color: rgba(0,255,136,0.15); }
+  .card.fail { border-color: rgba(255,107,53,0.15); }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .card-scan {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(0,229,255,0.04), transparent);
+    animation: scan 1.2s linear infinite;
+  }
+  .card.testing .card-scan { display: block; }
+  @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+  .server-url {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    word-break: break-all;
+  }
+
+  .server-url .proto { color: var(--accent); opacity: 0.6; }
+
+  .timing {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: right;
+    min-width: 70px;
+  }
+  .timing.fast { color: var(--accent2); }
+  .timing.slow { color: var(--warn); }
+
+  .badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    text-transform: uppercase;
+    min-width: 72px;
+    text-align: center;
+  }
+  .badge-idle { background: rgba(58,80,96,0.4); color: var(--muted); }
+  .badge-testing { background: rgba(0,229,255,0.1); color: var(--accent); }
+  .badge-ok { background: rgba(0,255,136,0.12); color: var(--accent2); }
+  .badge-fail { background: rgba(255,107,53,0.12); color: var(--warn); }
+
+  .ip-info {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+  }
+
+  .group-header {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    text-transform: uppercase;
+    opacity: 0.5;
+    padding: 12px 4px 4px;
+  }
+  .group-header:first-child { padding-top: 0; }
+
+  footer {
+    max-width: 760px;
+    margin: 32px auto 0;
+    padding: 20px 0;
+    border-top: 1px solid var(--border);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  footer a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s, opacity 0.2s;
+    opacity: 0.8;
+  }
+
+  footer a:hover {
+    color: #fff;
+    opacity: 1;
+  }
+
+  .log {
+    max-width: 760px;
+    margin: 32px auto 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+  }
+
+  .log-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .log-entries {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--text-dim);
+    max-height: 160px;
+    overflow-y: auto;
+  }
+
+  .log-entries::-webkit-scrollbar { width: 4px; }
+  .log-entries::-webkit-scrollbar-track { background: transparent; }
+  .log-entries::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .log-ok { color: var(--accent2); }
+  .log-fail { color: var(--warn); }
+  .log-info { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="label">// WebRTC ICE Diagnostics</div>
+  <h1>STUN <span>Server</span> Test</h1>
+  <p class="subtitle">Tests reachability via live RTCPeerConnection ICE gathering</p>
+</header>
+
+<div class="controls">
+  <button class="btn-primary" id="runBtn" onclick="runAll()">▶ Run Tests</button>
+  <button class="btn-secondary" onclick="reset()">Reset</button>
+</div>
+
+<div class="status-bar">
+  <div class="stat">
+    <span>TOTAL</span>
+    <span class="stat-val" id="statTotal">24</span>
+  </div>
+  <div class="stat">
+    <span>PASSED</span>
+    <span class="stat-val green" id="statPass">—</span>
+  </div>
+  <div class="stat">
+    <span>FAILED</span>
+    <span class="stat-val red" id="statFail">—</span>
+  </div>
+  <div class="stat">
+    <span>AVG RTT</span>
+    <span class="stat-val" id="statAvg">—</span>
+  </div>
+</div>
+
+<div class="grid" id="grid"></div>
+<footer>
+  <span>Author:</span>
+  <a href="https://arifulislamat.com" target="_blank" rel="noopener">Ariful Islam</a>
+</footer>
+
+<div class="log">
+  <div class="log-title">// Event Log</div>
+  <div class="log-entries" id="log"></div>
+</div>
+
+<script>
+const serverGroups = [
+  {
+    label: "Google STUN",
+    servers: [
+      "stun:stun.l.google.com:19302",
+      "stun:stun.l.google.com:5349",
+      "stun:stun1.l.google.com:3478",
+      "stun:stun1.l.google.com:5349",
+      "stun:stun2.l.google.com:19302",
+      "stun:stun2.l.google.com:5349",
+      "stun:stun3.l.google.com:3478",
+      "stun:stun3.l.google.com:5349",
+      "stun:stun4.l.google.com:19302",
+      "stun:stun4.l.google.com:5349"
+    ]
+  },
+  {
+    label: "VoIP Community STUN",
+    servers: [
+      "stun:stun01.sipphone.com",
+      "stun:stun.ekiga.net",
+      "stun:stun.fwdnet.net",
+      "stun:stun.ideasip.com",
+      "stun:stun.iptel.org",
+      "stun:stun.rixtelecom.se",
+      "stun:stun.schlund.de",
+      "stun:stunserver.org",
+      "stun:stun.softjoys.com",
+      "stun:stun.voiparound.com",
+      "stun:stun.voipbuster.com",
+      "stun:stun.voipstunt.com",
+      "stun:stun.voxgratia.org",
+      "stun:stun.xten.com"
+    ]
+  }
+];
+const servers = serverGroups.flatMap(g => g.servers);
+
+let results = [];
+let running = false;
+
+function buildGrid() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  results = [];
+  let globalIdx = 0;
+  serverGroups.forEach(group => {
+    const header = document.createElement('div');
+    header.className = 'group-header';
+    header.textContent = '// ' + group.label;
+    grid.appendChild(header);
+    group.servers.forEach(url => {
+      const i = globalIdx++;
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.id = `card-${i}`;
+      const displayUrl = url.replace('stun:', '<span class="proto">stun:</span>');
+      card.innerHTML = `
+        <div class="card-scan"></div>
+        <div>
+          <div class="server-url">${displayUrl}</div>
+          <div class="ip-info" id="ip-${i}"></div>
+        </div>
+        <div class="timing" id="time-${i}">—</div>
+        <div class="badge badge-idle" id="badge-${i}">idle</div>
+      `;
+      grid.appendChild(card);
+      results.push({ url, status: 'idle', ms: null });
+    });
+  });
+}
+
+function log(msg, cls = '') {
+  const el = document.getElementById('log');
+  const now = new Date().toLocaleTimeString('en', { hour12: false });
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = `[${now}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setCard(i, status, ms, ip) {
+  const card = document.getElementById(`card-${i}`);
+  const badge = document.getElementById(`badge-${i}`);
+  const time = document.getElementById(`time-${i}`);
+  const ipEl = document.getElementById(`ip-${i}`);
+  card.className = 'card ' + status;
+  if (status === 'testing') {
+    badge.className = 'badge badge-testing'; badge.textContent = 'testing';
+    time.textContent = '…'; time.className = 'timing';
+  } else if (status === 'success') {
+    badge.className = 'badge badge-ok'; badge.textContent = 'ok';
+    time.textContent = ms + 'ms';
+    time.className = 'timing' + (ms < 100 ? ' fast' : ms > 400 ? ' slow' : '');
+  } else {
+    badge.className = 'badge badge-fail'; badge.textContent = 'fail';
+    time.textContent = 'timeout'; time.className = 'timing slow';
+  }
+  if (ip) ipEl.textContent = '→ ' + ip;
+}
+
+function testStun(url, timeout = 5000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    let done = false;
+    let pc;
+    const finish = (success, ms, ip) => {
+      if (done) return;
+      done = true;
+      try { pc.close(); } catch(e) {}
+      resolve({ success, ms, ip });
+    };
+
+    try {
+      pc = new RTCPeerConnection({ iceServers: [{ urls: url }] });
+      pc.createDataChannel('');
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          const ms = Date.now() - start;
+          // Try to extract the srflx (server-reflexive) IP
+          const parts = e.candidate.candidate.split(' ');
+          const type = parts[7];
+          const ip = type === 'srflx' ? parts[4] : (parts[4] || '');
+          if (type === 'srflx') finish(true, ms, ip);
+        }
+      };
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') {
+          if (!done) finish(false, null, null);
+        }
+      };
+      pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => finish(false, null, null));
+    } catch(e) {
+      finish(false, null, null);
+    }
+
+    setTimeout(() => finish(false, null, null), timeout);
+  });
+}
+
+async function runAll() {
+  if (running) return;
+  running = true;
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('statPass').textContent = '—';
+  document.getElementById('statFail').textContent = '—';
+  document.getElementById('statAvg').textContent = '—';
+  document.getElementById('log').innerHTML = '';
+  log('Starting STUN diagnostics...', 'log-info');
+
+  let passed = 0, failed = 0, totalMs = 0;
+
+  for (let i = 0; i < servers.length; i++) {
+    setCard(i, 'testing');
+    log(`Testing ${servers[i]}`);
+    const { success, ms, ip } = await testStun(servers[i]);
+    if (success) {
+      passed++;
+      totalMs += ms;
+      setCard(i, 'success', ms, ip);
+      log(`✓ ${servers[i]} — ${ms}ms${ip ? ' [' + ip + ']' : ''}`, 'log-ok');
+    } else {
+      failed++;
+      setCard(i, 'fail');
+      log(`✗ ${servers[i]} — no response`, 'log-fail');
+    }
+    document.getElementById('statPass').textContent = passed;
+    document.getElementById('statFail').textContent = failed;
+    document.getElementById('statAvg').textContent = passed > 0 ? Math.round(totalMs / passed) + 'ms' : '—';
+  }
+
+  log(`Done. ${passed}/${servers.length} reachable.`, 'log-info');
+  running = false;
+  document.getElementById('runBtn').disabled = false;
+}
+
+function reset() {
+  if (running) return;
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('statPass').textContent = '—';
+  document.getElementById('statFail').textContent = '—';
+  document.getElementById('statAvg').textContent = '—';
+  buildGrid();
+}
+
+buildGrid();
+</script>
+</body>
+</html>
